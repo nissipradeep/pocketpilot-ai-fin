@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useStore } from '@/lib/store';
-import { CATEGORIES, Category } from '@/lib/types';
+import { CATEGORIES, Category, formatCurrency, formatCurrencyShort } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import BottomNav from '@/components/BottomNav';
 
@@ -10,48 +10,35 @@ const CHART_COLORS = [
 ];
 
 const Analytics = () => {
-  const { state, totalExpenses, totalIncome, categoryTotals, savingsAmount, goalProgress } = useStore();
+  const { state, totalExpenses, totalIncome, categoryTotals, savingsAmount, goalProgress, currency } = useStore();
 
   const pieData = Object.entries(categoryTotals)
     .filter(([, v]) => v > 0)
-    .map(([key, value]) => ({
-      name: CATEGORIES[key as Category].label,
-      value,
-      icon: CATEGORIES[key as Category].icon,
-    }));
+    .map(([key, value]) => ({ name: CATEGORIES[key as Category].label, value, icon: CATEGORIES[key as Category].icon }));
 
   // Daily spending trend (last 14 days)
   const dailyData = (() => {
     const days: Record<string, number> = {};
     for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+      const d = new Date(); d.setDate(d.getDate() - i);
       const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       days[key] = 0;
     }
-    state.transactions
-      .filter(t => t.type === 'expense')
-      .forEach(t => {
-        const key = new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        if (key in days) days[key] += t.amount;
-      });
+    state.transactions.filter(t => t.type === 'expense').forEach(t => {
+      const key = new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (key in days) days[key] += t.amount;
+    });
     return Object.entries(days).map(([date, amount]) => ({ date, amount }));
   })();
 
   // Savings projection
   const savingsProjection = (() => {
     const target = state.user?.savingsTarget || 0;
-    const deadline = state.user?.goalDeadline;
-    if (!deadline || !target) return [];
-
-    const now = new Date();
-    const end = new Date(deadline);
-    const monthsLeft = Math.max(1, (end.getFullYear() - now.getFullYear()) * 12 + end.getMonth() - now.getMonth());
+    const months = state.user?.goalDeadlineMonths || 0;
+    if (!months || !target) return [];
     const monthlySavings = savingsAmount;
-
-    return Array.from({ length: Math.min(monthsLeft + 1, 12) }, (_, i) => {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() + i);
+    return Array.from({ length: Math.min(months + 1, 12) }, (_, i) => {
+      const d = new Date(); d.setMonth(d.getMonth() + i);
       return {
         month: d.toLocaleDateString('en-US', { month: 'short' }),
         projected: Math.min(target, monthlySavings * (i + 1)),
@@ -60,25 +47,23 @@ const Analytics = () => {
     });
   })();
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 15 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
-  };
+  const sym = state.user?.currencyCode || 'USD';
+  const itemVariants = { hidden: { opacity: 0, y: 15 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
 
   return (
     <div className="page-container pt-6">
       <motion.div initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.08 } } }} className="flex flex-col gap-5">
         <motion.h1 variants={itemVariants} className="text-xl font-bold font-display text-foreground">Analytics</motion.h1>
 
-        {/* Summary cards */}
+        {/* Summary */}
         <motion.div variants={itemVariants} className="grid grid-cols-2 gap-3">
           <div className="card-finance text-center">
             <p className="stat-label">Total Spent</p>
-            <p className="stat-value text-destructive">${totalExpenses.toLocaleString()}</p>
+            <p className="stat-value text-destructive">{formatCurrencyShort(totalExpenses, currency)}</p>
           </div>
           <div className="card-finance text-center">
             <p className="stat-label">Saved</p>
-            <p className="stat-value text-income">${savingsAmount.toLocaleString()}</p>
+            <p className="stat-value text-income">{formatCurrencyShort(savingsAmount, currency)}</p>
           </div>
         </motion.div>
 
@@ -103,7 +88,7 @@ const Analytics = () => {
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
                     <span className="text-muted-foreground truncate">{d.icon} {d.name}</span>
-                    <span className="font-medium text-foreground ml-auto">${d.value.toFixed(0)}</span>
+                    <span className="font-medium text-foreground ml-auto">{formatCurrencyShort(d.value, currency)}</span>
                   </div>
                 ))}
               </div>
@@ -111,7 +96,7 @@ const Analytics = () => {
           )}
         </motion.div>
 
-        {/* Spending Trend Line Chart */}
+        {/* Line Chart */}
         <motion.div variants={itemVariants} className="card-finance">
           <p className="stat-label mb-3">Daily Spending (14 days)</p>
           <div className="h-48">
@@ -120,15 +105,8 @@ const Analytics = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={35} />
-                <Tooltip
-                  contentStyle={{
-                    background: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spent']}
-                />
+                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', fontSize: '12px' }}
+                  formatter={(value: number) => [formatCurrency(value, currency), 'Spent']} />
                 <Line type="monotone" dataKey="amount" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -146,14 +124,7 @@ const Analytics = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} width={40} />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                    }}
-                  />
+                  <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', fontSize: '12px' }} />
                   <Line type="monotone" dataKey="projected" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} name="Projected" />
                   <Line type="monotone" dataKey="target" stroke="hsl(var(--accent))" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Target" />
                 </LineChart>
