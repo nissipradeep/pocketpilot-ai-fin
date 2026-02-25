@@ -1,14 +1,33 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { AppState, UserProfile, Transaction, Category } from './types';
+import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import { AppState, UserProfile, Transaction, Category, ChatMessage, CurrencyCode } from './types';
 
 const STORAGE_KEY = 'pocketpilot_data';
 
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migration: add chatHistory if missing
+      if (!parsed.chatHistory) parsed.chatHistory = [];
+      // Migration: ensure currency fields
+      if (parsed.user && !parsed.user.currencyCode) parsed.user.currencyCode = 'USD';
+      if (parsed.user && !parsed.user.fullName && parsed.user.name) {
+        parsed.user.fullName = parsed.user.name;
+      }
+      if (parsed.user && !parsed.user.username) {
+        parsed.user.username = parsed.user.email || 'user';
+      }
+      if (parsed.transactions) {
+        parsed.transactions = parsed.transactions.map((t: any) => ({
+          ...t,
+          currencyCode: t.currencyCode || 'USD',
+        }));
+      }
+      return parsed;
+    }
   } catch {}
-  return { user: null, transactions: [], isAuthenticated: false };
+  return { user: null, transactions: [], chatHistory: [], isAuthenticated: false };
 }
 
 function saveState(state: AppState) {
@@ -22,14 +41,17 @@ type Action =
   | { type: 'ADD_TRANSACTION'; transaction: Transaction }
   | { type: 'DELETE_TRANSACTION'; id: string }
   | { type: 'MONTHLY_RESET' }
-  | { type: 'SET_DARK_MODE'; enabled: boolean };
+  | { type: 'SET_DARK_MODE'; enabled: boolean }
+  | { type: 'ADD_CHAT_MESSAGE'; message: ChatMessage }
+  | { type: 'CLEAR_CHAT_SESSION'; sessionId: string }
+  | { type: 'NEW_CHAT_SESSION' };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'LOGIN':
       return { ...state, user: action.user, isAuthenticated: true };
     case 'LOGOUT':
-      return { user: null, transactions: [], isAuthenticated: false };
+      return { user: null, transactions: [], chatHistory: [], isAuthenticated: false };
     case 'UPDATE_PROFILE':
       return { ...state, user: state.user ? { ...state.user, ...action.updates } : null };
     case 'ADD_TRANSACTION':
@@ -48,6 +70,12 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_DARK_MODE':
       return { ...state, user: state.user ? { ...state.user, darkMode: action.enabled } : null };
+    case 'ADD_CHAT_MESSAGE':
+      return { ...state, chatHistory: [...state.chatHistory, action.message] };
+    case 'CLEAR_CHAT_SESSION':
+      return { ...state, chatHistory: state.chatHistory.filter(m => m.sessionId !== action.sessionId) };
+    case 'NEW_CHAT_SESSION':
+      return state; // Session ID managed in component
     default:
       return state;
   }
@@ -56,7 +84,6 @@ function reducer(state: AppState, action: Action): AppState {
 interface StoreContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
-  // Computed values
   totalExpenses: number;
   totalIncome: number;
   remainingBalance: number;
@@ -66,6 +93,8 @@ interface StoreContextType {
   categoryTotals: Record<Category, number>;
   todayExpenses: number;
   isOverspending: boolean;
+  usableAmount: number;
+  currency: CurrencyCode;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -73,11 +102,8 @@ const StoreContext = createContext<StoreContextType | null>(null);
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
 
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
+  useEffect(() => { saveState(state); }, [state]);
 
-  // Apply dark mode
   useEffect(() => {
     if (state.user?.darkMode) {
       document.documentElement.classList.add('dark');
@@ -86,7 +112,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.user?.darkMode]);
 
-  // Monthly reset check
   useEffect(() => {
     const lastReset = localStorage.getItem('pocketpilot_last_reset');
     const now = new Date();
@@ -96,6 +121,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('pocketpilot_last_reset', resetKey);
     }
   }, [state.isAuthenticated]);
+
+  const currency: CurrencyCode = state.user?.currencyCode || 'USD';
 
   const currentMonthTransactions = state.transactions.filter(t => {
     const d = new Date(t.date);
@@ -110,15 +137,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const totalIncome = state.user?.monthlyIncome || 0;
   const remainingBalance = totalIncome - totalExpenses;
   const savingsTarget = state.user?.savingsTarget || 0;
-  const savingsAmount = Math.max(0, remainingBalance - (totalIncome - savingsTarget - totalExpenses > 0 ? 0 : 0));
+  const usableAmount = totalIncome - savingsTarget;
   const effectiveSavings = Math.max(0, remainingBalance);
-
   const goalProgress = savingsTarget > 0 ? Math.min(100, (effectiveSavings / savingsTarget) * 100) : 0;
 
   const now = new Date();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = daysInMonth - now.getDate() + 1;
-  const spendableBudget = Math.max(0, totalIncome - savingsTarget - totalExpenses);
+  const spendableBudget = Math.max(0, usableAmount - totalExpenses);
   const dailySpendingLimit = daysLeft > 0 ? spendableBudget / daysLeft : 0;
 
   const categoryTotals = currentMonthTransactions
@@ -136,17 +162,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const isOverspending = todayExpenses > dailySpendingLimit && dailySpendingLimit > 0;
 
   const value: StoreContextType = {
-    state,
-    dispatch,
-    totalExpenses,
-    totalIncome,
-    remainingBalance,
-    savingsAmount: effectiveSavings,
-    goalProgress,
-    dailySpendingLimit,
-    categoryTotals,
-    todayExpenses,
-    isOverspending,
+    state, dispatch, totalExpenses, totalIncome, remainingBalance,
+    savingsAmount: effectiveSavings, goalProgress, dailySpendingLimit,
+    categoryTotals, todayExpenses, isOverspending, usableAmount, currency,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

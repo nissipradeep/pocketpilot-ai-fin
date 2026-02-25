@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '@/lib/store';
-import { Wallet, Eye, EyeOff } from 'lucide-react';
+import { Wallet, Eye, EyeOff, UserPlus } from 'lucide-react';
 
 const SignUp = () => {
   const navigate = useNavigate();
   const { dispatch } = useStore();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -16,13 +16,14 @@ const SignUp = () => {
 
   const validate = () => {
     const errs: string[] = [];
-    if (name.trim().length < 2) errs.push('Name must be at least 2 characters');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push('Invalid email address');
+    if (fullName.trim().length < 2) errs.push('Full name must be at least 2 characters');
+    if (username.trim().length < 3) errs.push('Username must be at least 3 characters');
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) errs.push('Username can only contain letters, numbers, underscores');
     if (password.length < 6) errs.push('Password must be at least 6 characters');
     if (password !== confirmPassword) errs.push('Passwords do not match');
 
     const users = JSON.parse(localStorage.getItem('pocketpilot_users') || '[]');
-    if (users.some((u: any) => u.email === email)) errs.push('Email already registered');
+    if (users.some((u: any) => u.username === username.trim())) errs.push('Username already taken');
 
     return errs;
   };
@@ -30,25 +31,23 @@ const SignUp = () => {
   const handleSignUp = (e: React.FormEvent) => {
     e.preventDefault();
     const errs = validate();
-    if (errs.length > 0) {
-      setErrors(errs);
-      return;
-    }
+    if (errs.length > 0) { setErrors(errs); return; }
 
     const id = crypto.randomUUID();
-    const user = { id, name: name.trim(), email, password, createdAt: new Date().toISOString() };
+    const user = { id, fullName: fullName.trim(), username: username.trim(), password, createdAt: new Date().toISOString() };
     const users = JSON.parse(localStorage.getItem('pocketpilot_users') || '[]');
     users.push(user);
     localStorage.setItem('pocketpilot_users', JSON.stringify(users));
 
     const profile = {
       id,
-      name: name.trim(),
-      email,
+      fullName: fullName.trim(),
+      username: username.trim(),
       monthlyIncome: 0,
       savingsTarget: 0,
+      currencyCode: 'USD' as const,
       financialGoal: '',
-      goalDeadline: '',
+      goalDeadlineMonths: 0,
       darkMode: false,
       onboardingComplete: false,
       createdAt: user.createdAt,
@@ -60,12 +59,7 @@ const SignUp = () => {
 
   return (
     <div className="page-container flex flex-col justify-center" style={{ minHeight: '100vh', paddingBottom: '2rem' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex flex-col items-center gap-8"
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--gradient-primary)' }}>
             <Wallet className="h-8 w-8 text-primary-foreground" />
@@ -76,23 +70,19 @@ const SignUp = () => {
 
         <form onSubmit={handleSignUp} className="w-full flex flex-col gap-4">
           {errors.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive flex flex-col gap-1"
-            >
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive flex flex-col gap-1">
               {errors.map((e, i) => <span key={i}>• {e}</span>)}
             </motion.div>
           )}
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">Full Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="John Doe" className="input-finance" required />
+            <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="John Doe" className="input-finance" required />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="input-finance" required />
+            <label className="text-sm font-medium text-foreground">Username</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="johndoe" className="input-finance" required />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -114,26 +104,15 @@ const SignUp = () => {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">Confirm Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter password"
-              className="input-finance"
-              required
-            />
+            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" className="input-finance" required />
           </div>
 
-          <button type="submit" className="btn-primary-gradient mt-2 w-full">
-            Create Account
-          </button>
+          <button type="submit" className="btn-primary-gradient mt-2 w-full">Create Account</button>
         </form>
 
         <p className="text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link to="/signin" className="font-medium text-primary hover:underline">
-            Sign In
-          </Link>
+          <Link to="/signin" className="font-medium text-primary hover:underline">Sign In</Link>
         </p>
       </motion.div>
     </div>

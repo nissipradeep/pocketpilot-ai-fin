@@ -6,8 +6,8 @@ import { Wallet, Eye, EyeOff } from 'lucide-react';
 
 const SignIn = () => {
   const navigate = useNavigate();
-  const { state, dispatch } = useStore();
-  const [email, setEmail] = useState('');
+  const { dispatch } = useStore();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -16,20 +16,20 @@ const SignIn = () => {
     e.preventDefault();
     setError('');
 
-    // Check localStorage for registered users
     const users = JSON.parse(localStorage.getItem('pocketpilot_users') || '[]');
-    const found = users.find((u: any) => u.email === email && u.password === password);
+    const found = users.find((u: any) => u.username === username && u.password === password);
 
     if (found) {
       const savedState = localStorage.getItem(`pocketpilot_profile_${found.id}`);
       const profile = savedState ? JSON.parse(savedState) : {
         id: found.id,
-        name: found.name,
-        email: found.email,
+        fullName: found.fullName || found.name || 'User',
+        username: found.username,
         monthlyIncome: 0,
         savingsTarget: 0,
+        currencyCode: 'USD',
         financialGoal: '',
-        goalDeadline: '',
+        goalDeadlineMonths: 0,
         darkMode: false,
         onboardingComplete: false,
         createdAt: found.createdAt,
@@ -37,18 +37,13 @@ const SignIn = () => {
       dispatch({ type: 'LOGIN', user: profile });
       navigate(profile.onboardingComplete ? '/dashboard' : '/onboarding');
     } else {
-      setError('Invalid email or password');
+      setError('Invalid username or password');
     }
   };
 
   return (
     <div className="page-container flex flex-col justify-center" style={{ minHeight: '100vh', paddingBottom: '2rem' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex flex-col items-center gap-8"
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'var(--gradient-primary)' }}>
             <Wallet className="h-8 w-8 text-primary-foreground" />
@@ -59,25 +54,14 @@ const SignIn = () => {
 
         <form onSubmit={handleSignIn} className="w-full flex flex-col gap-4">
           {error && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-            >
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
             </motion.div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="input-finance"
-              required
-            />
+            <label className="text-sm font-medium text-foreground">Username</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="johndoe" className="input-finance" required />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -91,26 +75,18 @@ const SignIn = () => {
                 className="input-finance pr-12"
                 required
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              >
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
           </div>
 
-          <button type="submit" className="btn-primary-gradient mt-2 w-full">
-            Sign In
-          </button>
+          <button type="submit" className="btn-primary-gradient mt-2 w-full">Sign In</button>
         </form>
 
         <p className="text-sm text-muted-foreground">
           Don't have an account?{' '}
-          <Link to="/signup" className="font-medium text-primary hover:underline">
-            Sign Up
-          </Link>
+          <Link to="/signup" className="font-medium text-primary hover:underline">Sign Up</Link>
         </p>
       </motion.div>
     </div>
