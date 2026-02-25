@@ -2,11 +2,46 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { StoreProvider, useStore } from "@/lib/store";
+import Splash from "./pages/Splash";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
+import Onboarding from "./pages/Onboarding";
+import Dashboard from "./pages/Dashboard";
+import Transactions from "./pages/Transactions";
+import Analytics from "./pages/Analytics";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { state } = useStore();
+  if (!state.isAuthenticated) return <Navigate to="/signin" replace />;
+  if (!state.user?.onboardingComplete) return <Navigate to="/onboarding" replace />;
+  return <>{children}</>;
+}
+
+function AuthRoute({ children }: { children: React.ReactNode }) {
+  const { state } = useStore();
+  if (state.isAuthenticated && state.user?.onboardingComplete) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/" element={<Splash />} />
+    <Route path="/signin" element={<AuthRoute><SignIn /></AuthRoute>} />
+    <Route path="/signup" element={<AuthRoute><SignUp /></AuthRoute>} />
+    <Route path="/onboarding" element={<Onboarding />} />
+    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+    <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+    <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -14,11 +49,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <StoreProvider>
+          <AppRoutes />
+        </StoreProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
