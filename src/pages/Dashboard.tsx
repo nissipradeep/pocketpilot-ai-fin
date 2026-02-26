@@ -24,7 +24,6 @@ const Dashboard = () => {
 
   const user = state.user!;
 
-  // 1. DYNAMIC AI INSIGHT LOGIC
   const aiInsight = useMemo(() => {
     if (state.transactions.length === 0) return "Your financial flight is ready. Scan your first receipt to take off! 🦅";
     if (isOverspending) return "Daily limit exceeded! Skip the non-essentials today to stay on track for your goal. 📉";
@@ -40,19 +39,23 @@ const Dashboard = () => {
     return 'Good Evening';
   })();
 
-  const pieData = Object.entries(categoryTotals)
-    .filter(([, v]) => v > 0)
-    .map(([key, value]) => ({ name: CATEGORIES[key as Category].label, value, icon: CATEGORIES[key as Category].icon }));
+  const pieData = useMemo(() => {
+    return Object.entries(categoryTotals)
+      .filter(([, v]) => v > 0)
+      .map(([key, value]) => ({ name: CATEGORIES[key as Category].label, value, icon: CATEGORIES[key as Category].icon }));
+  }, [categoryTotals]);
 
-  const last7Days = [...Array(7)].map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-    const amount = state.transactions
-      .filter(t => t.type === 'expense' && new Date(t.date).toDateString() === d.toDateString())
-      .reduce((sum, t) => sum + t.amount, 0);
-    return { name: dayName, amount };
-  });
+  const last7Days = useMemo(() => {
+    return [...Array(7)].map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const amount = state.transactions
+        .filter(t => t.type === 'expense' && new Date(t.date).toDateString() === d.toDateString())
+        .reduce((sum, t) => sum + t.amount, 0);
+      return { name: dayName, amount };
+    });
+  }, [state.transactions]);
 
   const recentTransactions = state.transactions.slice(0, 5);
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } };
@@ -62,7 +65,6 @@ const Dashboard = () => {
     <div className="page-container pt-6">
       <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col gap-5 pb-24">
 
-        {/* TOP AI INSIGHT BANNER */}
         <motion.div variants={itemVariants} className="bg-primary/10 border border-primary/20 rounded-2xl p-4 flex gap-3 items-center">
           <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -72,7 +74,6 @@ const Dashboard = () => {
           </p>
         </motion.div>
 
-        {/* Header */}
         <motion.div variants={itemVariants} className="flex items-center justify-between">
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">{greeting}</p>
@@ -83,7 +84,6 @@ const Dashboard = () => {
           </button>
         </motion.div>
 
-        {/* Balance Card */}
         <motion.div variants={itemVariants} className="card-elevated group cursor-pointer overflow-hidden">
           <motion.div className="absolute top-0 right-0 h-32 w-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/10 transition-all" />
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Monthly Income</p>
@@ -104,7 +104,6 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* TREND CHART */}
         {state.transactions.length > 0 && (
           <motion.div variants={itemVariants} className="card-finance">
             <div className="flex items-center justify-between mb-5">
@@ -130,19 +129,34 @@ const Dashboard = () => {
           </motion.div>
         )}
 
-        {/* GOAL PROGRESS */}
-        <motion.div variants={itemVariants} className="card-finance">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Goal Progress</p>
-            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{goalProgress.toFixed(0)}%</span>
-          </div>
-          <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
-            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, goalProgress)}%` }} transition={{ duration: 1.2, ease: "easeOut" }} className="h-full rounded-full" style={{ background: 'var(--gradient-primary)' }} />
-          </div>
-          <p className="mt-3 text-sm font-bold text-white truncate">{user.financialGoal || "Set a goal in profile"}</p>
-        </motion.div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <motion.div variants={itemVariants} className="card-finance">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-4">Goal Progress</p>
+            <div className="flex items-end justify-between mb-1">
+              <span className="text-2xl font-bold text-white">{goalProgress.toFixed(0)}%</span>
+              <span className="text-[10px] text-muted-foreground uppercase">{user.financialGoal}</span>
+            </div>
+            <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+              <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, goalProgress)}%` }} transition={{ duration: 1.2 }} className="h-full rounded-full" style={{ background: 'var(--gradient-primary)' }} />
+            </div>
+          </motion.div>
 
-        {/* RECENT ACTIVITY / EMPTY STATE */}
+          {pieData.length > 0 && (
+            <motion.div variants={itemVariants} className="card-finance">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Breakdown</p>
+              <div className="h-32 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={25} outerRadius={45} paddingAngle={4} dataKey="value" strokeWidth={0}>
+                      {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          )}
+        </div>
+
         <motion.div variants={itemVariants} className="card-finance flex flex-col min-h-[200px]">
           <div className="flex items-center justify-between mb-5">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Recent Activity</p>
