@@ -2,42 +2,87 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '@/lib/store';
-import { Wallet, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { Wallet, Eye, EyeOff, Mail, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const SignIn = () => {
   const navigate = useNavigate();
   const { dispatch } = useStore();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    const users = JSON.parse(localStorage.getItem('pocketpilot_users') || '[]');
-    const found = users.find((u: any) => u.username === username && u.password === password);
+    try {
+      // 1. SIGN IN WITH SUPABASE
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
-    if (found) {
-      const savedState = localStorage.getItem(`pocketpilot_profile_${found.id}`);
-      const profile = savedState ? JSON.parse(savedState) : {
-        id: found.id,
-        fullName: found.fullName || found.name || 'User',
-        username: found.username,
-        monthlyIncome: 0,
-        savingsTarget: 0,
-        currencyCode: 'USD',
-        financialGoal: '',
-        goalDeadlineMonths: 0,
-        darkMode: false,
-        onboardingComplete: false,
-        createdAt: found.createdAt,
+      if (authError) throw authError;
+
+      // 2. FETCH USER PROFILE DATA
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Profile fetch error:", profileError);
+      }
+
+      const profile = {
+        id: data.user.id,
+        fullName: profileData?.full_name || 'User',
+        username: profileData?.username || email.split('@')[0],
+        monthlyIncome: profileData?.monthly_income || 0,
+        savingsTarget: profileData?.savings_target || 0,
+        currencyCode: (profileData?.currency_code as any) || 'USD',
+        financialGoal: profileData?.financial_goal || '',
+        goalDeadlineDate: profileData?.goal_deadline_date || new Date().toISOString(),
+        darkMode: profileData?.dark_mode || false,
+        onboardingComplete: profileData?.onboarding_complete || false,
+        createdAt: profileData?.created_at || new Date().toISOString(),
       };
+
       dispatch({ type: 'LOGIN', user: profile });
+      toast.success("Welcome back!");
       navigate(profile.onboardingComplete ? '/dashboard' : '/onboarding');
-    } else {
-      setError('Invalid username or password');
+
+    } catch (err: any) {
+      setError(err.message || 'Invalid email or password');
+      toast.error(err.message || "Failed to sign in");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error("Please enter your email address first");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast.success("Password reset link sent to your email!");
+    } catch (err: any) {
+      toast.error(err.message || "Could not send reset link");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -60,12 +105,18 @@ const SignIn = () => {
           )}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">Username</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="johndoe" className="input-finance" required />
+            <label className="text-sm font-medium text-foreground">Email Address</label>
+            <div className="relative">
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="john@example.com" className="input-finance pl-10" required disabled={isLoading} />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">Password</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground">Password</label>
+              <button type="button" onClick={handleForgotPassword} className="text-xs text-primary font-medium hover:underline">Forgot Password?</button>
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -74,6 +125,7 @@ const SignIn = () => {
                 placeholder="Enter password"
                 className="input-finance pr-12"
                 required
+                disabled={isLoading}
               />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -81,7 +133,9 @@ const SignIn = () => {
             </div>
           </div>
 
-          <button type="submit" className="btn-primary-gradient mt-2 w-full">Sign In</button>
+          <button type="submit" disabled={isLoading} className="btn-primary-gradient mt-2 w-full flex items-center justify-center gap-2">
+            {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing In...</> : 'Sign In'}
+          </button>
         </form>
 
         <p className="text-sm text-muted-foreground">
