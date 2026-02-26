@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 const SignIn = () => {
   const navigate = useNavigate();
-  const { dispatch } = useStore();
+  const { dispatch, syncData } = useStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,34 +29,11 @@ const SignIn = () => {
 
       if (authError) throw authError;
 
-      // 2. FETCH USER PROFILE DATA
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
+      // 2. FETCH ALL DATA
+      await syncData();
 
-      if (profileError) {
-        console.error("Profile fetch error:", profileError);
-      }
-
-      const profile = {
-        id: data.user.id,
-        fullName: profileData?.full_name || 'User',
-        username: profileData?.username || email.split('@')[0],
-        monthlyIncome: profileData?.monthly_income || 0,
-        savingsTarget: profileData?.savings_target || 0,
-        currencyCode: (profileData?.currency_code as any) || 'USD',
-        financialGoal: profileData?.financial_goal || '',
-        goalDeadlineDate: profileData?.goal_deadline_date || new Date().toISOString(),
-        darkMode: profileData?.dark_mode || false,
-        onboardingComplete: profileData?.onboarding_complete || false,
-        createdAt: profileData?.created_at || new Date().toISOString(),
-      };
-
-      dispatch({ type: 'LOGIN', user: profile });
       toast.success("Welcome back!");
-      navigate(profile.onboardingComplete ? '/dashboard' : '/onboarding');
+      navigate('/dashboard');
 
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
@@ -133,8 +110,8 @@ const SignIn = () => {
             </div>
           </div>
 
-          <button type="submit" disabled={isLoading} className="btn-primary-gradient mt-2 w-full flex items-center justify-center gap-2">
-            {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing In...</> : 'Sign In'}
+          <button type="submit" disabled={isLoading} className="btn-primary-gradient mt-2 w-full flex items-center justify-center gap-2 text-white">
+            {isLoading ? <><Loader2 className="h-4 w-4 animate-spin text-white" /> Signing In...</> : 'Sign In'}
           </button>
         </form>
 
