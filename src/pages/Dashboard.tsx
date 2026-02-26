@@ -2,12 +2,12 @@ import { motion } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { CATEGORIES, Category, formatCurrency, formatCurrencyShort } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
-import { Plus, TrendingDown, Wallet, Target, AlertTriangle, Sparkles, BarChart3, PlaneTakeoff, Info } from 'lucide-react';
+import { Plus, TrendingDown, Wallet, Target, AlertTriangle, Sparkles, BarChart3, PlaneTakeoff, Info, Loader2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import AddTransaction from '@/components/AddTransaction';
 import AIChatBot from '@/components/AIChatBot';
 import BottomNav from '@/components/BottomNav';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 
 const CHART_COLORS = [
   '#6366F1', '#10B981', '#F59E0B', '#EC4899',
@@ -22,7 +22,18 @@ const Dashboard = () => {
   } = useStore();
   const [showAdd, setShowAdd] = useState(false);
 
-  const user = state.user!;
+  // SAFETY GUARD: If state is loading or user is null, show a loader instead of crashing
+  if (!state.isAuthenticated) return <Navigate to="/signin" replace />;
+  if (!state.user) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0B] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em]">Loading Profile...</p>
+      </div>
+    );
+  }
+
+  const user = state.user;
 
   const aiInsight = useMemo(() => {
     if (state.transactions.length === 0) return "Your financial flight is ready. Scan your first receipt to take off! 🦅";
